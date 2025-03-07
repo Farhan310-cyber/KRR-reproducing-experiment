@@ -7,12 +7,17 @@ from torch import optim
 from trainer import Trainer
 import torch.nn as nn
 from model import MLP, ConRelEncoder, MulHopEncoder
-
+import random
+import numpy as np
 
 class EARLTrainer(Trainer):
     def __init__(self, args):
         super(EARLTrainer, self).__init__(args)
 
+        # Set random seed for reproducibility
+        self.set_seed(args.seed)
+
+        # Hyperparameters
         self.num_step = args.num_step
         self.train_bs = args.train_bs
         self.lr = args.lr
@@ -20,6 +25,7 @@ class EARLTrainer(Trainer):
         self.check_per_step = args.check_per_step
         self.early_stop_patience = args.early_stop_patience
 
+        # Data Loading
         self.train_iter = OneShotIterator(DataLoader(self.train_dataset,
                                                       batch_size=self.train_bs,
                                                       shuffle=True,
@@ -27,7 +33,6 @@ class EARLTrainer(Trainer):
                                                       collate_fn=KGETrainDataset.collate_fn))
 
         res_ent = pkl.load(open(os.path.join(args.data_path, f'res_ent_{self.args.res_ent_ratio}.pkl'), 'rb'))
-
         self.res_ent_map = res_ent['res_ent_map'].to(self.args.gpu)
         num_res_ent = self.res_ent_map.shape[0]
         self.res_ent_emb = nn.Parameter(torch.Tensor(num_res_ent, args.ent_dim).to(args.gpu))
@@ -42,9 +47,7 @@ class EARLTrainer(Trainer):
 
         self.con_rel_encoder = ConRelEncoder(args).to(args.gpu)
         self.mul_hop_encoder = MulHopEncoder(args).to(args.gpu)
-
         self.proj = MLP(args.ent_dim*2, args.ent_dim, args.ent_dim).to(args.gpu)
-
 
         # optimizer
         self.optimizer = optim.Adam(
@@ -55,6 +58,19 @@ class EARLTrainer(Trainer):
                                     lr=self.lr)
 
         self.cal_num_param()
+
+    def set_seed(self, seed):
+        """
+        Set the random seed for reproducibility.
+        """
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+        if hasattr(torch.backends, "cudnn"):
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
 
     def cal_num_param(self):
         num_param = 0
@@ -146,6 +162,7 @@ class EARLTrainer(Trainer):
             results['hits@5'], results['hits@10']))
 
         return results
+
 
 
 
